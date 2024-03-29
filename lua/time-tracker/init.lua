@@ -237,6 +237,14 @@ local render_stats = function(tracker)
     return a.duration > b.duration
   end)
 
+  local sorted_project_durations = {}
+  for path, duration in pairs(project_durations) do
+    table.insert(sorted_project_durations, { path = path, duration = duration })
+  end
+  table.sort(sorted_project_durations, function(a, b)
+    return a.duration > b.duration
+  end)
+
   local mode = "current"
 
   local render_lines = function()
@@ -275,8 +283,8 @@ local render_stats = function(tracker)
         "Projects:",
       })
 
-      for project_path, duration in pairs(project_durations) do
-        table.insert(lines, string.format("- %s `%s`", format_duration(duration), format_path(project_path)))
+      for _, project in ipairs(sorted_project_durations) do
+        table.insert(lines, string.format("- %s `%s`", format_duration(project.duration), format_path(project.path)))
       end
     end
 
