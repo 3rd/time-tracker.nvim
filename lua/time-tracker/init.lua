@@ -27,6 +27,7 @@ end
 --- @param path string
 --- @return string
 local format_path = function(path)
+  if path == nil or path == "" then return "[unknown]" end
   return vim.fn.fnamemodify(path, ":~:.")
 end
 
@@ -94,7 +95,7 @@ function TimeTracker:write_session_entry()
     for buffer_name, duration in pairs(self.buffer_durations) do
       if duration > 0 then
         table.insert(session.buffers, {
-          buffer = buffer_name == "" and "[unknown]" or buffer_name,
+          buffer = buffer_name,
           duration = duration,
         })
       end
@@ -181,17 +182,7 @@ function TimeTracker:get_current_session_file_durations()
 end
 
 --- @return { [string]: number }
-function TimeTracker:get_all_time_project_durations()
-  local sessions = self:load_data()
-  local durations = {}
-  for _, session in ipairs(sessions) do
-    durations[session.path] = (durations[session.path] or 0) + session.duration
-  end
-  return durations
-end
-
---- @return { [string]: number }
-function TimeTracker:get_all_time_project_file_durations()
+function TimeTracker:get_current_project_all_time_file_durations()
   local file_durations = {}
 
   -- get durations from saved sessions
@@ -213,12 +204,23 @@ function TimeTracker:get_all_time_project_file_durations()
   return file_durations
 end
 
+--- @return { [string]: number }
+function TimeTracker:get_all_projects_durations()
+  local sessions = self:load_data()
+  local durations = {}
+  for _, session in ipairs(sessions) do
+    durations[session.path] = (durations[session.path] or 0) + session.duration
+  end
+  durations[self.project.path] = (durations[self.project.path] or 0) + self:get_current_session_duration()
+  return durations
+end
+
 --- @param tracker TimeTracker
 local render_stats = function(tracker)
   local session_duration = tracker:get_current_session_duration()
-  local project_durations = tracker:get_all_time_project_durations()
+  local project_durations = tracker:get_all_projects_durations()
   local current_session_file_durations = tracker:get_current_session_file_durations()
-  local project_file_durations = tracker:get_all_time_project_file_durations()
+  local project_file_durations = tracker:get_current_project_all_time_file_durations()
 
   local sorted_current_session_files = {}
   for file, duration in pairs(current_session_file_durations) do
@@ -258,7 +260,7 @@ local render_stats = function(tracker)
         "Root: `" .. format_path(tracker.project.path) .. "`",
         "",
         "Current session: " .. format_duration(session_duration),
-        "All-time: " .. format_duration(project_durations[tracker.project.path] + session_duration),
+        "All-time: " .. format_duration(project_durations[tracker.project.path]),
         "",
         "Files (current session):",
       })
