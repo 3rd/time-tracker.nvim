@@ -104,6 +104,9 @@ function TimeTracker:write_session_entry()
   local sessions = self:load_data()
   table.insert(sessions, session)
   self:save_data(sessions)
+
+  self.buffer_durations = {}
+
   return session
 end
 
@@ -135,9 +138,9 @@ function TimeTracker:handle_activity()
     local current_buffer_path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(current_buffer), ":~:.")
 
     -- new session or buffer change
-    if self.timer == nil or current_buffer ~= self.active_buffer or current_buffer_path ~= self.active_buffer_path then
+    if self.timer == nil or current_buffer ~= self.active_buffer then
       -- update duration for the previous active buffer
-      if self.active_buffer_path then
+      if self.active_buffer then
         local active_buffer_duration = current_timestamp - self.active_buffer_start
         self.buffer_durations[self.active_buffer_path] = (self.buffer_durations[self.active_buffer_path] or 0)
           + active_buffer_duration
@@ -164,20 +167,16 @@ end
 --- @return { [string]: number }
 function TimeTracker:get_current_session_file_durations()
   local file_durations = {}
-
-  -- update duration for the current active buffer
+  -- add durations for buffers in the current session
+  for buffer_path, duration in pairs(self.buffer_durations) do
+    file_durations[buffer_path] = duration
+  end
+  -- add duration for the current active buffer
   if self.active_buffer_path then
     local current_timestamp = vim.fn.localtime()
     local active_buffer_duration = current_timestamp - self.active_buffer_start
-    file_durations[self.active_buffer_path] = (self.buffer_durations[self.active_buffer_path] or 0)
-      + active_buffer_duration
+    file_durations[self.active_buffer_path] = active_buffer_duration
   end
-
-  -- add durations for other buffers in the current session
-  for buffer_path, duration in pairs(self.buffer_durations) do
-    if buffer_path ~= self.active_buffer_path then file_durations[buffer_path] = duration end
-  end
-
   return file_durations
 end
 
