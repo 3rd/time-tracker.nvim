@@ -43,8 +43,6 @@ function TimeTracker:new(config)
     session_start = vim.fn.localtime(),
     buffer_durations = {},
     active_buffer = nil,
-    active_buffer_path = nil,
-    active_buffer_start = vim.fn.localtime(),
   }
   setmetatable(tracker, self)
   self.__index = self
@@ -84,9 +82,9 @@ function TimeTracker:write_session_entry()
 
   if self.config.buffer_tracking_enabled then
     -- update current buffer duration
-    if self.active_buffer_path then
-      local active_buffer_duration = end_timestamp - self.active_buffer_start
-      self.buffer_durations[self.active_buffer_path] = (self.buffer_durations[self.active_buffer_path] or 0)
+    if self.active_buffer then
+      local active_buffer_duration = end_timestamp - self.active_buffer.start
+      self.buffer_durations[self.active_buffer.path] = (self.buffer_durations[self.active_buffer.path] or 0)
         + active_buffer_duration
     end
 
@@ -106,6 +104,8 @@ function TimeTracker:write_session_entry()
   table.insert(sessions, session)
   self:save_data(sessions)
 
+  self.session_start = end_timestamp
+  self.active_buffer = nil
   self.buffer_durations = {}
 
   return session
@@ -120,11 +120,10 @@ function TimeTracker:reset_timer()
   self.timer:start(self.config.tracking_timeout_seconds * 1000, 0, function()
     vim.schedule(function()
       self:write_session_entry()
+      self.timer:stop()
+      self.timer:close()
+      self.timer = nil
     end)
-
-    self.timer:stop()
-    self.timer:close()
-    self.timer = nil
   end)
 end
 
@@ -133,29 +132,27 @@ function TimeTracker:handle_activity()
 
   if self.config.buffer_tracking_enabled then
     local current_buffer = vim.api.nvim_get_current_buf()
-
-    if not is_trackable_buffer(current_buffer) then return end
-
     local current_buffer_path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(current_buffer), ":~:.")
 
-    -- new session or buffer change
-    if self.timer == nil or current_buffer ~= self.active_buffer then
-      -- update duration for the previous active buffer
-      if self.active_buffer then
-        local active_buffer_duration = current_timestamp - self.active_buffer_start
-        self.buffer_durations[self.active_buffer_path] = (self.buffer_durations[self.active_buffer_path] or 0)
-          + active_buffer_duration
-      end
+    if is_trackable_buffer(current_buffer) then
+      -- new session or buffer change
+      if self.timer == nil or not self.active_buffer or current_buffer ~= self.active_buffer.number then
+        -- update duration for the previous active buffer
+        if self.active_buffer then
+          local prev_active_buffer_duration = current_timestamp - self.active_buffer.start
+          local new_duration = (self.buffer_durations[self.active_buffer.path] or 0) + prev_active_buffer_duration
+          self.buffer_durations[self.active_buffer.path] = new_duration
+        end
 
-      -- update active buffer and start time
-      self.active_buffer = current_buffer
-      self.active_buffer_path = current_buffer_path
-      self.active_buffer_start = current_timestamp
+        -- update active buffer and start time
+        self.active_buffer = {
+          number = current_buffer,
+          path = current_buffer_path,
+          start = current_timestamp,
+        }
+      end
     end
   end
-
-  -- new session
-  if self.timer == nil then self.session_start = current_timestamp end
 
   self:reset_timer()
 end
@@ -173,10 +170,10 @@ function TimeTracker:get_current_session_file_durations()
     file_durations[buffer_path] = duration
   end
   -- add duration for the current active buffer
-  if self.active_buffer_path then
+  if self.active_buffer then
     local current_timestamp = vim.fn.localtime()
-    local active_buffer_duration = current_timestamp - self.active_buffer_start
-    file_durations[self.active_buffer_path] = active_buffer_duration
+    local active_buffer_duration = current_timestamp - self.active_buffer.start
+    file_durations[self.active_buffer.path] = active_buffer_duration
   end
   return file_durations
 end
@@ -260,7 +257,7 @@ local render_stats = function(tracker)
         "Root: `" .. format_path(tracker.project.path) .. "`",
         "",
         "Current session: " .. format_duration(session_duration),
-        "All-time: " .. format_duration(project_durations[tracker.project.path]),
+        "All-time: " .. format_duration((project_durations[tracker.project.path] or 0)),
         "",
         "Files (current session):",
       })

@@ -27,7 +27,5 @@
 --- @field timer uv_timer_t
 --- @field session_start number
 --- @field buffers WorkSessionBufferEntry[]
---- @field active_buffer number
---- @field active_buffer_path string
---- @field active_buffer_start number
+--- @field active_buffer { number: number, path: string, start: number }
 --- @field buffer_durations { [string]: number }
