@@ -1,6 +1,6 @@
 ## time-tracker.nvim
 
-![image](https://github.com/3rd/time-tracker.nvim/assets/59587503/eb893321-2c2c-4291-abbb-ce91987c5916)
+![image](https://github.com/3rd/time-tracker.nvim/assets/59587503/eb5b87ca-86ce-4c5c-b3e5-aec25a0797ad)
 
 This is a Neovim plugin that tracks the time you spend working on your projects.
 It will index your projects based on the current working directory, and track the time spent on each file within the project.
