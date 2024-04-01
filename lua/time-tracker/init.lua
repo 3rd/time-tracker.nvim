@@ -154,6 +154,7 @@ function TimeTracker:handle_activity()
     end
   end
 
+  if self.timer == nil then self.session_start = current_timestamp end
   self:reset_timer()
 end
 
