@@ -1,11 +1,13 @@
 stds.nvim = {
-  read_globals = {
+  globals = {
     --
     "jit",
     "vim",
     "describe",
     "it",
     "expect",
+    "before_each",
+    "after_each",
   },
 }
 std = "lua51+nvim"

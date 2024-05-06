@@ -1,4 +1,5 @@
 local utils = require("time-tracker/utils")
+
 --- @type TimeTracker
 local TimeTracker = {
   --- @type Config
@@ -6,8 +7,6 @@ local TimeTracker = {
   current_buffer = nil,
   current_session = nil,
 
-  --- @param config Config
-  --- @return TimeTracker
   new = function(self, config)
     local tracker = {
       config = config,
@@ -18,24 +17,18 @@ local TimeTracker = {
     return tracker
   end,
 
-  --- @return Data|nil
   load_data = function(self)
     local ok, data = pcall(vim.fn.readfile, self.config.data_file)
-    if not ok then
-      vim.notify("Failed to load time tracker data: " .. data, vim.log.levels.ERROR)
-      return nil
-    end
+    if not ok then return { roots = {} } end
     return vim.fn.json_decode(data)
   end,
 
-  --- @param data Data
   save_data = function(self, data)
     local json = vim.fn.json_encode(data)
     local ok, err = pcall(vim.fn.writefile, { json }, self.config.data_file)
     if not ok then vim.notify("Failed to save time tracker data: " .. err, vim.log.levels.ERROR) end
   end,
 
-  ---@param bufnr number
   start_session = function(self, bufnr)
     if not utils.is_trackable_buffer(bufnr) then return end
 
@@ -123,7 +116,6 @@ local TimeTracker = {
 
     -- save session
     local data = self:load_data()
-    if not data then data = { roots = {} } end
     for cwd, buffers in pairs(self.current_session.buffers) do
       if not data.roots[cwd] then data.roots[cwd] = {} end
       for path, sessions in pairs(buffers) do

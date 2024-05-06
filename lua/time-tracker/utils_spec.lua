@@ -1,4 +1,3 @@
-local t = require("testing")
 local utils = require("time-tracker/utils")
 
 describe("is_trackable_buffer", function()
