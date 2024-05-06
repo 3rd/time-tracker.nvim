@@ -20,7 +20,7 @@ You need to call the setup function, optionally passing a configuration object (
 require("time-tracker").setup({
   data_file = vim.fn.stdpath("data") .. "/time-tracker.json",
   tracking_events = { "BufEnter", "BufWinEnter", "CursorMoved", "CursorMovedI", "WinScrolled" },
-  tracking_timeout_seconds = 300, -- 5 minutes
+  tracking_timeout_seconds = 1 * 60, -- 1 minute
 })
 ```
 
