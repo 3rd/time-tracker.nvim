@@ -3,7 +3,6 @@ local default_config = {
   data_file = vim.fn.stdpath("data") .. "/time-tracker.json",
   tracking_events = { "BufEnter", "BufWinEnter", "CursorMoved", "CursorMovedI", "WinScrolled" },
   tracking_timeout_seconds = 5 * 60,
-  buffer_tracking_enabled = true,
 }
 
 --- @param current_buffer number
@@ -70,7 +69,26 @@ end
 
 function TimeTracker:write_session_entry()
   local end_timestamp = vim.fn.localtime()
-  local total_duration = end_timestamp - self.session_start
+  local total_duration = 0
+
+  -- update current buffer duration
+  if self.active_buffer then
+    local active_buffer_duration = end_timestamp - self.active_buffer.start
+    self.buffer_durations[self.active_buffer.path] = (self.buffer_durations[self.active_buffer.path] or 0)
+      + active_buffer_duration
+  end
+
+  -- update session
+  local buffers = {}
+  for buffer_name, duration in pairs(self.buffer_durations) do
+    if duration > 0 then
+      table.insert(buffers, {
+        buffer = buffer_name,
+        duration = duration,
+      })
+      total_duration = total_duration + duration
+    end
+  end
 
   --- @type WorkSession
   local session = {
@@ -78,37 +96,16 @@ function TimeTracker:write_session_entry()
     start = self.session_start,
     ["end"] = end_timestamp,
     duration = total_duration,
+    buffers = buffers,
   }
-
-  if self.config.buffer_tracking_enabled then
-    -- update current buffer duration
-    if self.active_buffer then
-      local active_buffer_duration = end_timestamp - self.active_buffer.start
-      self.buffer_durations[self.active_buffer.path] = (self.buffer_durations[self.active_buffer.path] or 0)
-        + active_buffer_duration
-    end
-
-    -- update session
-    session.buffers = {}
-    for buffer_name, duration in pairs(self.buffer_durations) do
-      if duration > 0 then
-        table.insert(session.buffers, {
-          buffer = buffer_name,
-          duration = duration,
-        })
-      end
-    end
-  end
 
   local sessions = self:load_data()
   table.insert(sessions, session)
   self:save_data(sessions)
 
-  self.session_start = end_timestamp
+  self.session_start = nil
   self.active_buffer = nil
   self.buffer_durations = {}
-
-  return session
 end
 
 function TimeTracker:reset_timer()
@@ -130,31 +127,29 @@ end
 function TimeTracker:handle_activity()
   local current_timestamp = vim.fn.localtime()
 
-  if self.config.buffer_tracking_enabled then
-    local current_buffer = vim.api.nvim_get_current_buf()
-    local current_buffer_path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(current_buffer), ":~:.")
+  local current_buffer = vim.api.nvim_get_current_buf()
+  local current_buffer_path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(current_buffer), ":~:.")
 
-    if is_trackable_buffer(current_buffer) then
-      -- new session or buffer change
-      if self.timer == nil or not self.active_buffer or current_buffer ~= self.active_buffer.number then
-        -- update duration for the previous active buffer
-        if self.active_buffer then
-          local prev_active_buffer_duration = current_timestamp - self.active_buffer.start
-          local new_duration = (self.buffer_durations[self.active_buffer.path] or 0) + prev_active_buffer_duration
-          self.buffer_durations[self.active_buffer.path] = new_duration
-        end
-
-        -- update active buffer and start time
-        self.active_buffer = {
-          number = current_buffer,
-          path = current_buffer_path,
-          start = current_timestamp,
-        }
+  if is_trackable_buffer(current_buffer) then
+    -- new session or buffer change
+    if self.timer == nil or not self.active_buffer or current_buffer ~= self.active_buffer.number then
+      -- update duration for the previous active buffer
+      if self.active_buffer then
+        local prev_active_buffer_duration = current_timestamp - self.active_buffer.start
+        local new_duration = (self.buffer_durations[self.active_buffer.path] or 0) + prev_active_buffer_duration
+        self.buffer_durations[self.active_buffer.path] = new_duration
       end
+
+      -- update active buffer and start time
+      self.active_buffer = {
+        number = current_buffer,
+        path = current_buffer_path,
+        start = current_timestamp,
+      }
     end
   end
 
-  if self.timer == nil then self.session_start = current_timestamp end
+  if self.session_start == nil then self.session_start = current_timestamp end
   self:reset_timer()
 end
 
@@ -186,7 +181,7 @@ function TimeTracker:get_current_project_all_time_file_durations()
   -- get durations from saved sessions
   local sessions = self:load_data()
   for _, session in ipairs(sessions) do
-    if self.config.buffer_tracking_enabled and session.path == self.project.path then
+    if session.path == self.project.path then
       for _, buffer in ipairs(session.buffers) do
         file_durations[buffer.buffer] = (file_durations[buffer.buffer] or 0) + buffer.duration
       end

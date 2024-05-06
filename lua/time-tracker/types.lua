@@ -4,10 +4,8 @@
 ---@field data_file string
 ---@field tracking_events string[]
 ---@field tracking_timeout_seconds number
----@field buffer_tracking_enabled boolean
 
 ---@class Project
----@field name string
 ---@field path string
 
 ---@class WorkSessionBufferEntry
@@ -24,8 +22,8 @@
 --- @class TimeTracker
 --- @field config Config
 --- @field project Project
---- @field timer uv_timer_t
---- @field session_start number
+--- @field timer uv_timer_t|nil
+--- @field session_start number|nil
 --- @field buffers WorkSessionBufferEntry[]
---- @field active_buffer { number: number, path: string, start: number }
+--- @field active_buffer { number: number, path: string, start: number }|nil
 --- @field buffer_durations { [string]: number }

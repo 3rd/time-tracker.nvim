@@ -1,0 +1,3 @@
+[submodule "testing.nvim"]
+	path = testing.nvim
+	url = https://github.com/3rd/testing.nvim

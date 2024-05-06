@@ -21,7 +21,6 @@ require("time-tracker").setup({
   data_file = vim.fn.stdpath("data") .. "/time-tracker.json",
   tracking_events = { "BufEnter", "BufWinEnter", "CursorMoved", "CursorMovedI", "WinScrolled" },
   tracking_timeout_seconds = 300, -- 5 minutes
-  buffer_tracking_enabled = true,
 })
 ```
 
