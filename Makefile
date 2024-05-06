@@ -26,12 +26,28 @@ define print_mod_end
 endef
 
 DEV_FEEDKEYS=:e\n
-DEV_EXTRA_ARGS=init.lua
+DEV_ARGS=-l ./development/dev.lua 
 
 help: ## help
 	@echo "🔥 ${YELLOW}nvim${RESET}"
 	@grep -E '^[a-zA-Z_0-9%-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "${BLUE}%-20s${RESET} %s\n", $$1, $$2}'
 .PHONY: help
+
+dev: ## watch
+	@watchexec --stop-timeout=0 --no-process-group --ignore-nothing --stop-signal SIGKILL -e "lua,vim" -r -c clear "nvim -S ./development/bootstrap.lua $(DEV_ARGS)"
+.PHONY: dev
+
+test: ## run tests
+	@./development/test.sh
+.PHONY: test
+
+test-watch: ## run tests (watch)
+	@./development/test.sh --watch
+.PHONY: test-watch
+
+check: ## run luacheck
+	@luacheck .
+.PHONY: check
 
 format: ## run stylua
 	@stylua .
