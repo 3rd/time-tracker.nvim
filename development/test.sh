@@ -4,7 +4,7 @@ IFS=$'\n\t'
 
 STATUS=0
 function run_all_tests() {
-  FILES=$(find . -name "*_spec.lua" -type f)
+  FILES=$(find ./lua -name "*_spec.lua" -type f)
 
   for f in $FILES; do
     echo "-> $f"
