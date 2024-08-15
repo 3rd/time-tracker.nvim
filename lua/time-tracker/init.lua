@@ -21,6 +21,7 @@ local setup = function(user_config)
   end
 
   local tracker = TimeTracker:new(config)
+  tracker:start_session()
 
   for _, event in ipairs(config.tracking_events) do
     vim.api.nvim_create_autocmd(event, {
