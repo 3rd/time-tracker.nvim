@@ -3,9 +3,9 @@ local ui = require("time-tracker/ui")
 
 --- @type Config
 local default_config = {
-  data_file = vim.fn.stdpath("data") .. "/time-tracker.json",
+  data_file = vim.fn.stdpath("data") .. "/time-tracker.sqlite",
   tracking_events = { "BufEnter", "BufWinEnter", "CursorMoved", "CursorMovedI", "WinScrolled" },
-  tracking_timeout_seconds = 1 * 60,
+  tracking_timeout_seconds = 5 * 60,
 }
 
 --- @param user_config Config
@@ -36,9 +36,6 @@ local setup = function(user_config)
     end,
   })
 
-  vim.api.nvim_create_user_command("TimeTrackerData", function()
-    vim.cmd.edit(config.data_file)
-  end, {})
   vim.api.nvim_create_user_command("TimeTracker", function()
     ui.render(vim.fn.getcwd(), tracker)
   end, {})

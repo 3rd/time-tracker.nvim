@@ -16,6 +16,7 @@
 ---@field roots table<CWD, table<BufferPath, BufferSession[]>>
 
 ---@class CurrentSession
+---@field id number
 ---@field buffers table<CWD, table<BufferPath, BufferSession[]>>
 
 ---@class CurrentBuffer
@@ -27,11 +28,13 @@
 ---@class TimeTracker
 ---@field config Config
 ---@field timer uv_timer_t|nil
+---@field timer_deadline number|nil
+---@field Session ORMModel|nil
+---@field Buffer ORMModel|nil
 ---@field current_session CurrentSession|nil
 ---@field current_buffer CurrentBuffer|nil
 ---@field new fun(self: TimeTracker, config: Config): TimeTracker
----@field start_session fun(self: TimeTracker, bufnr: number)
+---@field start_session fun(self: TimeTracker)
 ---@field handle_activity fun(self: TimeTracker)
 ---@field end_session fun(self: TimeTracker)
 ---@field load_data fun(self: TimeTracker): Data
----@field save_data fun(self: TimeTracker, data: Data)

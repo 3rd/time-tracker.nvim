@@ -1,3 +1,6 @@
 [submodule "development/testing.nvim"]
 	path = development/testing.nvim
 	url = https://github.com/3rd/testing.nvim
+[submodule "development/sqlite.nvim"]
+	path = development/sqlite.nvim
+	url = https://github.com/3rd/sqlite.nvim

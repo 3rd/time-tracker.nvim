@@ -1,3 +1,5 @@
+local orm = require("sqlite.orm")
+local sqlite = require("sqlite")
 local utils = require("time-tracker/utils")
 
 --- @type TimeTracker
@@ -6,33 +8,64 @@ local TimeTracker = {
   config = nil,
   current_buffer = nil,
   current_session = nil,
+  Session = nil,
+  Buffer = nil,
 
   new = function(self, config)
     local tracker = {
       config = config,
     }
     setmetatable(tracker, self)
-    ---@diagnostic disable-next-line: inject-field
     self.__index = self
+    tracker:init_db()
     return tracker
   end,
 
+  init_db = function(self)
+    self.Session = orm.define("sessions", {
+      id = orm.integer({ primary_key = true, auto_increment = true }),
+      start_time = orm.integer({ not_null = true }),
+      end_time = orm.integer({ not_null = true }),
+    })
+
+    self.Buffer = orm.define("buffers", {
+      id = orm.integer({ primary_key = true, auto_increment = true }),
+      session_id = orm.integer({ not_null = true }),
+      cwd = orm.text({ not_null = true }),
+      path = orm.text({ not_null = true }),
+      start_time = orm.integer({ not_null = true }),
+      end_time = orm.integer({ not_null = true }),
+    })
+
+    -- local db = sqlite.open(self.config.data_file, { debug = true })
+    local db = sqlite.open(self.config.data_file)
+    self.Session:connect(db)
+    self.Buffer:connect(db)
+  end,
+
   load_data = function(self)
-    local ok, data = pcall(vim.fn.readfile, self.config.data_file)
-    if not ok then return { roots = {} } end
-    return vim.fn.json_decode(data)
+    local buffers = self.Buffer:all()
+    local data = { roots = {} }
+
+    for _, buffer in ipairs(buffers) do
+      if not data.roots[buffer.cwd] then data.roots[buffer.cwd] = {} end
+      if not data.roots[buffer.cwd][buffer.path] then data.roots[buffer.cwd][buffer.path] = {} end
+      table.insert(data.roots[buffer.cwd][buffer.path], {
+        start = buffer.start_time,
+        ["end"] = buffer.end_time,
+      })
+    end
+
+    return data
   end,
 
-  save_data = function(self, data)
-    local json = vim.fn.json_encode(data)
-    local ok, err = pcall(vim.fn.writefile, { json }, self.config.data_file)
-    if not ok then vim.notify("Failed to save time tracker data: " .. err, vim.log.levels.ERROR) end
-  end,
-
-  start_session = function(self, bufnr)
-    if not utils.is_trackable_buffer(bufnr) then return end
-
+  start_session = function(self)
+    local id = self.Session:create({
+      start_time = vim.fn.localtime(),
+      end_time = vim.fn.localtime(),
+    })
     self.current_session = {
+      id = id,
       buffers = {},
     }
   end,
@@ -42,24 +75,18 @@ local TimeTracker = {
     if not utils.is_trackable_buffer(bufnr) then return end
 
     -- session doesn't exist, create it
-    if not self.current_session then self:start_session(bufnr) end
+    if not self.current_session then self:start_session() end
 
     -- store previous buffer activity on buffer change
     if self.current_buffer and self.current_buffer.bufnr ~= bufnr then
-      local buf_cwd = self.current_buffer.cwd
-      local buf_path = self.current_buffer.path
-
-      ---@type BufferSession
-      local entry = {
-        start = self.current_buffer.start,
-        ["end"] = vim.fn.localtime(),
-      }
-
-      if not self.current_session.buffers[buf_cwd] then self.current_session.buffers[buf_cwd] = {} end
-      if not self.current_session.buffers[buf_cwd][buf_path] then
-        self.current_session.buffers[buf_cwd][buf_path] = {}
-      end
-      table.insert(self.current_session.buffers[buf_cwd][buf_path], entry)
+      local end_time = vim.fn.localtime()
+      self.Buffer:create({
+        session_id = self.current_session.id,
+        cwd = self.current_buffer.cwd,
+        path = self.current_buffer.path,
+        start_time = self.current_buffer.start,
+        end_time = end_time,
+      })
     end
 
     -- set new current buffer on buffer change or when there is no current buffer
@@ -71,6 +98,8 @@ local TimeTracker = {
         bufnr = bufnr,
         cwd = buf_cwd,
         path = buf_path,
+        name = vim.fn.fnamemodify(buf_path, ":t"),
+        ft = vim.bo[bufnr].filetype,
         start = vim.fn.localtime(),
       }
     end
@@ -89,6 +118,7 @@ local TimeTracker = {
         self.timer = nil
       end)
     end)
+    self.timer_deadline = vim.fn.localtime() + self.config.tracking_timeout_seconds + 60
   end,
 
   end_session = function(self)
@@ -96,36 +126,23 @@ local TimeTracker = {
 
     -- record current buffer
     if self.current_buffer then
-      local buf_cwd = self.current_buffer.cwd
-      local buf_path = self.current_buffer.path
-
-      ---@type BufferSession
-      local entry = {
-        start = self.current_buffer.start,
-        ["end"] = vim.fn.localtime(),
-      }
-
-      if not self.current_session.buffers[buf_cwd] then self.current_session.buffers[buf_cwd] = {} end
-      if not self.current_session.buffers[buf_cwd][buf_path] then
-        self.current_session.buffers[buf_cwd][buf_path] = {}
+      if vim.fn.localtime() <= self.timer_deadline then
+        local end_time = vim.fn.localtime()
+        self.Buffer:create({
+          session_id = self.current_session.id,
+          cwd = self.current_buffer.cwd,
+          path = self.current_buffer.path,
+          start_time = self.current_buffer.start,
+          end_time = end_time,
+        })
       end
-      table.insert(self.current_session.buffers[buf_cwd][buf_path], entry)
 
       self.current_buffer = nil
     end
 
-    -- save session
-    local data = self:load_data()
-    for cwd, buffers in pairs(self.current_session.buffers) do
-      if not data.roots[cwd] then data.roots[cwd] = {} end
-      for path, sessions in pairs(buffers) do
-        if not data.roots[cwd][path] then data.roots[cwd][path] = {} end
-        for _, session in ipairs(sessions) do
-          table.insert(data.roots[cwd][path], session)
-        end
-      end
-    end
-    self:save_data(data)
+    -- update session end time
+    self.Session:update("id = " .. self.current_session.id, { end_time = vim.fn.localtime() })
+
     self.current_session = nil
   end,
 }

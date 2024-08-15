@@ -2,7 +2,7 @@ local TimeTracker = require("time-tracker/tracker").TimeTracker
 
 describe("TimeTracker", function()
   local config = {
-    data_file = "/tmp/time-tracker.json",
+    data_file = "/tmp/time-tracker.sqlite",
     tracking_events = { "BufEnter" },
     tracking_timeout_seconds = 1,
   }
@@ -20,7 +20,7 @@ describe("TimeTracker", function()
     local tracker = TimeTracker:new(config)
     local buf = vim.api.nvim_create_buf(true, false)
     vim.api.nvim_buf_set_name(buf, "/dev/null")
-    tracker:start_session(buf)
+    tracker:start_session()
     expect(tracker.current_session).n.toBe(nil)
   end)
 end)
