@@ -43,3 +43,16 @@ describe("format_path_friendly", function()
     expect(formatted).toBe("~/foo/bar")
   end)
 end)
+
+describe("in_array", function()
+  it("returns true if value is in array", function()
+    local array = { "foo", "bar", "baz" }
+    local value = "foo"
+    expect(utils.in_array(value, array)).toBe(true)
+  end)
+  it("returns false if value is not in array", function()
+    local array = { "foo", "bar", "baz" }
+    local value = "qux"
+    expect(utils.in_array(value, array)).toBe(false)
+  end)
+end)

@@ -24,8 +24,18 @@ local format_path_friendly = function(path)
   return vim.fn.fnamemodify(vim.fn.expand(path), ":~:.")
 end
 
+--- @param value any
+--- @param array any[]
+local in_array = function(value, array)
+  for _, v in ipairs(array) do
+    if v == value then return true end
+  end
+  return false
+end
+
 return {
   is_trackable_buffer = is_trackable_buffer,
   format_duration = format_duration,
   format_path_friendly = format_path_friendly,
+  in_array = in_array,
 }
