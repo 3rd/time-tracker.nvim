@@ -1,9 +1,8 @@
-local TimeTracker = require("time-tracker/tracker").TimeTracker
-local SqliteSession = require("time-tracker/sqlite_session").SqliteSession
+local JsonSession = require("time-tracker/json_session").JsonSession
 
-describe("SqliteSession", function()
+describe("JsonSession", function()
   local config = {
-    data_file = "/tmp/time-tracker.sqlite",
+    data_file = "/tmp/time-tracker.json",
     tracking_events = { "BufEnter" },
     tracking_timeout_seconds = 1,
   }
@@ -13,15 +12,14 @@ describe("SqliteSession", function()
   end)
 
   it("creates a new instance", function()
-    local tracker = SqliteSession:new(config)
+    local tracker = JsonSession:new(config)
     expect(tracker.config).toBe(config)
   end)
 
   it("starts a session", function()
-    local tracker = SqliteSession:new(config)
+    local tracker = JsonSession:new(config)
     local buf = vim.api.nvim_create_buf(true, false)
     vim.api.nvim_buf_set_name(buf, "/dev/null")
-    tracker:init()
     tracker:start_session(buf)
     expect(tracker.current_session).n.toBe(nil)
   end)

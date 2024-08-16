@@ -27,6 +27,7 @@ The data is stored in a SQLite database, you need to have `sqlite3` in your `PAT
     event = "VeryLazy",
     opts = {
         data_file = vim.fn.stdpath("data") .. "/time-tracker.db",
+        storage = "sqlite",
     },
 }
 ```
@@ -36,6 +37,7 @@ You need to call the setup function, optionally passing a configuration object (
 ```lua
 require("time-tracker").setup({
   data_file = vim.fn.stdpath("data") .. "/time-tracker.db",
+  storage = "sqlite",
   tracking_events = { "BufEnter", "BufWinEnter", "CursorMoved", "CursorMovedI", "WinScrolled" },
   tracking_timeout_seconds = 5 * 60, -- 5 minutes
 })

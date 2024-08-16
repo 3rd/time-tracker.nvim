@@ -43,7 +43,7 @@
 ---@field new fun(self: SessionInterface, config: Config)
 ---@field init fun(self: SessionInterface)
 ---@field load_data fun(self: SessionInterface): Data
----@field start_session fun(self: SessionInterface)
+---@field start_session fun(self: SessionInterface, bufnr: number)
 ---@field handle_activity fun(self: SessionInterface)
 ---@field end_session fun(self: SessionInterface)
 
@@ -58,6 +58,21 @@
 ---@field new fun(self: SqliteSession, config: Config): SqliteSession
 ---@field init fun(self: SqliteSession)
 ---@field load_data fun(self: SqliteSession): Data
----@field start_session fun(self: SqliteSession)
+---@field start_session fun(self: SqliteSession, bufnr: number)
+---@field handle_activity fun(self: SqliteSession)
+---@field end_session fun(self: SqliteSession)
+
+---@class JsonSession
+---@field config Config
+---@field Session ORMModel|nil
+---@field Buffer ORMModel|nil
+---@field current_session CurrentSession|nil
+---@field current_buffer CurrentBuffer|nil
+---@field timer uv_timer_t|nil
+---@field timer_deadline number|nil
+---@field new fun(self: SqliteSession, config: Config): SqliteSession
+---@field init fun(self: SqliteSession)
+---@field load_data fun(self: SqliteSession): Data
+---@field start_session fun(self: SqliteSession, bufnr: number)
 ---@field handle_activity fun(self: SqliteSession)
 ---@field end_session fun(self: SqliteSession)

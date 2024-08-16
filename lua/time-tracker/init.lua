@@ -14,7 +14,7 @@ local default_config = {
 
 --- @param config Config
 local get_session_impl = function(config)
-  if config.storage == "json" then return require("time-tracker.sqlite_session").SqliteSession:new(config) end
+  if config.storage == "json" then return require("time-tracker.json_session").JsonSession:new(config) end
   return require("time-tracker.sqlite_session").SqliteSession:new(config)
 end
 
@@ -38,7 +38,6 @@ local setup = function(user_config)
   local session = get_session_impl(config)
 
   local tracker = TimeTracker:new(session)
-  tracker:start_session()
 
   for _, event in ipairs(config.tracking_events) do
     vim.api.nvim_create_autocmd(event, {

@@ -40,6 +40,9 @@ local SqliteSession = {
     local db = sqlite.open(self.config.data_file)
     self.Session:connect(db)
     self.Buffer:connect(db)
+    -- bufnr is not required for sqlite `start_session` method
+    -- we give it 0 as it is required
+    self:start_session(0)
   end,
 
   load_data = function(self)
@@ -58,7 +61,7 @@ local SqliteSession = {
     return data
   end,
 
-  start_session = function(self)
+  start_session = function(self, bufnr)
     local id = self.Session:create({
       start_time = vim.fn.localtime(),
       end_time = vim.fn.localtime(),
