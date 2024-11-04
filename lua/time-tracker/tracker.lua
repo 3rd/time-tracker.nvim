@@ -112,6 +112,7 @@ local TimeTracker = {
     self.timer = vim.loop.new_timer()
     self.timer:start(self.config.tracking_timeout_seconds * 1000, 0, function()
       vim.schedule(function()
+        if self.timer == nil then return end
         self:end_session()
         self.timer:stop()
         self.timer:close()
