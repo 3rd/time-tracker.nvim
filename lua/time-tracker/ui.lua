@@ -218,6 +218,7 @@ local render = function(cwd, tracker)
   vim.wo[win].cursorline = true
   -- vim.wo[win].winblend = 10
   vim.wo[win].wrap = true
+  vim.wo[win].concealcursor = "nc"
 
   local rerender = function(new_mode)
     mode = new_mode

@@ -2,7 +2,7 @@ local orm = require("sqlite.orm")
 local sqlite = require("sqlite")
 local utils = require("time-tracker/utils")
 
---- @type TimeTracker
+---@type TimeTracker
 local TimeTracker = {
   --- @type Config
   config = nil,
