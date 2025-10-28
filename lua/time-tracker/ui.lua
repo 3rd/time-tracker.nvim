@@ -172,12 +172,22 @@ local render = function(cwd, tracker)
         "Projects:",
       })
 
+      local total_dur = 0
       for _, project in ipairs(sorted_project_durations) do
         table.insert(
           lines,
           string.format("- %s `%s`", utils.format_duration(project.duration), utils.format_path_friendly(project.path))
         )
+        total_dur = total_dur + project.duration
       end
+      vim.list_extend(lines, {
+        "",
+        "Total Time:"
+      })
+      table.insert(
+        lines,
+        string.format("- %s", utils.format_duration(total_dur))
+      )
     end
 
     return lines
