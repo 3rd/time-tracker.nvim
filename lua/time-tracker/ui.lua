@@ -251,6 +251,7 @@ function M.show_session_history(tracker)
   local ns_id = vim.api.nvim_create_namespace("TrackerSelection")
 
   -- 1. COLORS (Link to standard groups for better theme compatibility)
+  vim.api.nvim_set_hl(0, "TrackerHeader", { fg = "#808080", italic = true })
   vim.api.nvim_set_hl(0, "WorkSessionGreen", { link = "String" })
   vim.api.nvim_set_hl(0, "SummaryWhite", { link = "Normal" })
   vim.api.nvim_set_hl(0, "SeparatorColor", { link = "Comment" })
@@ -345,7 +346,7 @@ function M.show_session_history(tracker)
     local lines = {
       "",
       string.format(" %-8s | %-15s | %-25s | %-10s", "Time", "Module", "File", "Duration"),
-      string.rep("─", total_w - 4),
+      string.rep("─", total_w),
     }
 
     for line in list_result:gmatch("[^\r\n]+") do
@@ -367,7 +368,9 @@ function M.show_session_history(tracker)
     vim.bo[top_buf].modifiable = true
     vim.api.nvim_buf_set_lines(top_buf, 0, -1, false, lines)
     for i = 0, #lines - 1 do
-      if i == 1 or i == 2 then
+      if i == 1 then
+        vim.api.nvim_buf_add_highlight(top_buf, -1, "TrackerHeader", i, 0, -1)
+      elseif i == 2 then
         vim.api.nvim_buf_add_highlight(top_buf, -1, "SeparatorColor", i, 0, -1)
       elseif i > 2 then
         vim.api.nvim_buf_add_highlight(top_buf, -1, "WorkSessionGreen", i, 0, -1)
@@ -411,7 +414,7 @@ function M.show_session_history(tracker)
   local summary_lines = {
     "",
     string.format(" %-7s | %-5s | %-25s | %-12s | %-12s", "Date", "Day", "Project Root", "Daily", "Project Total"),
-    string.rep("─", total_w - 4),
+    string.rep("─", total_w),
   }
 
   for _, key in ipairs(ordered_keys) do
@@ -433,7 +436,9 @@ function M.show_session_history(tracker)
   vim.bo[bot_buf].modifiable = true
   vim.api.nvim_buf_set_lines(bot_buf, 0, -1, false, summary_lines)
   for i = 0, #summary_lines - 1 do
-    if i == 1 or i == 2 then
+    if i == 1 then
+      vim.api.nvim_buf_add_highlight(bot_buf, -1, "TrackerHeader", i, 0, -1)
+    elseif i == 2 then
       vim.api.nvim_buf_add_highlight(bot_buf, -1, "SeparatorColor", i, 0, -1)
     elseif i > 2 then
       vim.api.nvim_buf_add_highlight(bot_buf, -1, "SummaryWhite", i, 0, -1)
