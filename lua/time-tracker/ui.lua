@@ -303,7 +303,7 @@ function M.show_session_history(tracker)
     local list_sql
     if not data then
       list_sql = [[
-        SELECT strftime('%H:%M', s.start_time, 'unixepoch', 'localtime'),
+        SELECT strftime('%I:%M %p', s.start_time, 'unixepoch', 'localtime'),
                COALESCE(b.cwd, '---'), COALESCE(b.path, '---')
         FROM sessions s LEFT JOIN buffers b ON s.id = b.session_id
         WHERE s.start_time > (strftime('%s', 'now') - 604800)
@@ -313,7 +313,7 @@ function M.show_session_history(tracker)
     else
       list_sql = string.format(
         [[
-        SELECT strftime('%%H:%%M', s.start_time, 'unixepoch', 'localtime'),
+        SELECT strftime('%%I:%%M %%p', s.start_time, 'unixepoch', 'localtime'),
                COALESCE(b.cwd, '---'), COALESCE(b.path, '---')
         FROM sessions s JOIN buffers b ON s.id = b.session_id
         WHERE strftime('%%m/%%d', s.start_time, 'unixepoch', 'localtime') = '%s'
@@ -338,7 +338,7 @@ function M.show_session_history(tracker)
     local list_result = get_sql_output(list_sql)
 
     -- Fixed format string to ensure columns are perfectly vertical
-    local top_format = " %-10s | %-20s | %-45s"
+    local top_format = " %-12s | %-20s | %-45s"
     local lines = {
       "",
       string.format(top_format, "Time", "Module", "File"),
