@@ -19,7 +19,7 @@ local get_current_session_file_durations = function(tracker)
   if tracker.current_buffer then
     local current_buffer_duration = (vim.fn.localtime() - tracker.current_buffer.start)
     file_durations[tracker.current_buffer.path] = (file_durations[tracker.current_buffer.path] or 0)
-      + current_buffer_duration
+        + current_buffer_duration
   end
 
   return file_durations
@@ -90,7 +90,7 @@ local get_all_projects_durations = function(tracker, data)
   if tracker.current_buffer then
     local project_duration = (vim.fn.localtime() - tracker.current_buffer.start)
     project_durations[tracker.current_buffer.cwd] = (project_durations[tracker.current_buffer.cwd] or 0)
-      + project_duration
+        + project_duration
   end
 
   return project_durations
@@ -103,7 +103,7 @@ local render = function(cwd, tracker)
   local current_session_total_duration = get_current_session_duration(current_session_file_durations)
   local data = tracker:load_data()
   local current_project_all_time_file_durations =
-    get_current_project_all_time_file_durations(data, cwd, current_session_file_durations)
+      get_current_project_all_time_file_durations(data, cwd, current_session_file_durations)
   local project_durations = get_all_projects_durations(tracker, data)
 
   local sorted_current_session_files = {}
@@ -244,13 +244,10 @@ end
 
 -- Add this to the M table at the bottom of the file
 function M.show_session_history(tracker)
-  -- Use the tracker's config instead of hardcoding
   local db_path = tracker.config.data_file
-  -- Fallback to 'sqlite3' if not specified by the user
   local sqlite_bin = vim.g.time_tracker_sqlite_bin or "sqlite3"
   local ns_id = vim.api.nvim_create_namespace("TrackerSelection")
 
-  -- 1. COLORS (Link to standard groups for better theme compatibility)
   vim.api.nvim_set_hl(0, "TrackerHeader", { fg = "#808080", italic = true })
   vim.api.nvim_set_hl(0, "WorkSessionGreen", { link = "String" })
   vim.api.nvim_set_hl(0, "SummaryWhite", { link = "Normal" })
@@ -288,21 +285,16 @@ function M.show_session_history(tracker)
   }
 
   local top_buf = vim.api.nvim_create_buf(false, true)
-  local top_win = vim.api.nvim_open_win(
-    top_buf,
-    false,
-    vim.tbl_extend("force", root_opts, { height = top_h, title = " WORK SESSIONS " })
-  )
+  local top_win = vim.api.nvim_open_win(top_buf, false,
+    vim.tbl_extend("force", root_opts, { height = top_h, title = " WORK SESSIONS " }))
   local bot_buf = vim.api.nvim_create_buf(false, true)
-  local bot_win = vim.api.nvim_open_win(
-    bot_buf,
-    true,
-    vim.tbl_extend("force", root_opts, { height = bot_h, row = root_opts.row + top_h + 2, title = " WEEKLY SUMMARY " })
-  )
+  local bot_win = vim.api.nvim_open_win(bot_buf, true,
+    vim.tbl_extend("force", root_opts, { height = bot_h, row = root_opts.row + top_h + 2, title = " WEEKLY SUMMARY " }))
 
   local line_to_data = {}
 
-  -- 3. REFRESH LOGIC
+  -- 3. REFRESH LOGIC (Top Window - Duration Removed)
+  -- 3. REFRESH LOGIC (Top Window)
   local function refresh_ui()
     local cursor = vim.api.nvim_win_get_cursor(bot_win)[1]
     local data = line_to_data[cursor]
@@ -312,27 +304,28 @@ function M.show_session_history(tracker)
     if not data then
       list_sql = [[
         SELECT strftime('%H:%M', s.start_time, 'unixepoch', 'localtime'),
-               COALESCE(b.cwd, '---'), COALESCE(b.path, '---'),
-               (s.end_time - s.start_time) / (SELECT COUNT(*) FROM buffers WHERE session_id = s.id)
+               COALESCE(b.cwd, '---'), COALESCE(b.path, '---')
         FROM sessions s LEFT JOIN buffers b ON s.id = b.session_id
         WHERE s.start_time > (strftime('%s', 'now') - 604800)
+        AND b.path NOT LIKE '%.lua'
         ORDER BY s.start_time DESC;
       ]]
     else
       list_sql = string.format(
         [[
         SELECT strftime('%%H:%%M', s.start_time, 'unixepoch', 'localtime'),
-               COALESCE(b.cwd, '---'), COALESCE(b.path, '---'),
-               (s.end_time - s.start_time) / (SELECT COUNT(*) FROM buffers WHERE session_id = s.id)
+               COALESCE(b.cwd, '---'), COALESCE(b.path, '---')
         FROM sessions s JOIN buffers b ON s.id = b.session_id
         WHERE strftime('%%m/%%d', s.start_time, 'unixepoch', 'localtime') = '%s'
         AND b.cwd LIKE '%%%s%%'
-        ORDER BY s.start_time ASC;
-      ]],
+        AND b.path NOT LIKE '%%.lua'
+        ORDER BY s.start_time DESC;
+        ]],
         data.date,
         data.project_root
       )
 
+      -- Highlight logic remains the same...
       for line_num, info in pairs(line_to_data) do
         if line_num == cursor then
           vim.api.nvim_buf_add_highlight(bot_buf, ns_id, "ActiveRowBlue", line_num - 1, 0, -1)
@@ -343,28 +336,29 @@ function M.show_session_history(tracker)
     end
 
     local list_result = get_sql_output(list_sql)
+
+    -- Fixed format string to ensure columns are perfectly vertical
+    local top_format = " %-10s | %-20s | %-45s"
     local lines = {
       "",
-      string.format(" %-8s | %-15s | %-25s | %-10s", "Time", "Module", "File", "Duration"),
+      string.format(top_format, "Time", "Module", "File"),
       string.rep("─", total_w),
     }
 
     for line in list_result:gmatch("[^\r\n]+") do
       local p = vim.split(line, "|")
-      if #p >= 4 then
+      if #p >= 3 then
+        local module_name = vim.fn.fnamemodify(p[2], ":t")
+        local file_name = vim.fn.fnamemodify(p[3], ":t")
+
         table.insert(
           lines,
-          string.format(
-            " %-8s | %-15s | %-25s | %s",
-            p[1],
-            vim.fn.fnamemodify(p[2], ":t"),
-            vim.fn.fnamemodify(p[3], ":t"),
-            format_time(tonumber(p[4]) or 0)
-          )
+          string.format(top_format, p[1], module_name, file_name)
         )
       end
     end
 
+    -- Rendering logic remains the same...
     vim.bo[top_buf].modifiable = true
     vim.api.nvim_buf_set_lines(top_buf, 0, -1, false, lines)
     for i = 0, #lines - 1 do
@@ -379,9 +373,9 @@ function M.show_session_history(tracker)
     vim.bo[top_buf].modifiable = false
   end
 
-  -- 4. BUILD SUMMARY DATA
+  -- 4. BUILD SUMMARY DATA (Bottom Window - Duration Included)
   local raw_data = get_sql_output(
-    "SELECT strftime('%m/%d', start_time, 'unixepoch', 'localtime'), strftime('%w', start_time, 'unixepoch', 'localtime'), id, (end_time - start_time) FROM sessions;"
+    "SELECT strftime('%m/%d', start_time, 'unixepoch', 'localtime'), strftime('%w', start_time, 'unixepoch', 'localtime'), id, (end_time - start_time) FROM sessions ORDER BY start_time DESC;"
   )
   local project_map_res = get_sql_output("SELECT session_id, cwd FROM buffers;")
 
@@ -411,9 +405,11 @@ function M.show_session_history(tracker)
     end
   end
 
+  local bot_format = " %-7s | %-5s | %-25s | %-15s | %-15s"
+
   local summary_lines = {
     "",
-    string.format(" %-7s | %-5s | %-25s | %-12s | %-12s", "Date", "Day", "Project Root", "Daily", "Project Total"),
+    string.format(bot_format, "Date", "Day", "Project Root", "Daily", "Project Total"),
     string.rep("─", total_w),
   }
 
@@ -422,7 +418,7 @@ function M.show_session_history(tracker)
     table.insert(
       summary_lines,
       string.format(
-        " %-7s | %-5s | %-25s | %-12s | %-12s",
+        bot_format,
         item.date,
         item.day,
         item.root,
@@ -456,12 +452,8 @@ function M.show_session_history(tracker)
     vim.bo[i.b].buftype = "nofile"
     vim.wo[i.w].number, vim.wo[i.w].cursorline, vim.wo[i.w].wrap = false, true, false
     vim.keymap.set("n", "q", close, { buffer = i.b })
-    vim.keymap.set("n", "sk", function()
-      vim.api.nvim_set_current_win(top_win)
-    end, { buffer = i.b })
-    vim.keymap.set("n", "sj", function()
-      vim.api.nvim_set_current_win(bot_win)
-    end, { buffer = i.b })
+    vim.keymap.set("n", "sk", function() vim.api.nvim_set_current_win(top_win) end, { buffer = i.b })
+    vim.keymap.set("n", "sj", function() vim.api.nvim_set_current_win(bot_win) end, { buffer = i.b })
   end
 
   refresh_ui()
