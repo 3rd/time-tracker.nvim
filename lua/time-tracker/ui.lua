@@ -19,7 +19,7 @@ local get_current_session_file_durations = function(tracker)
   if tracker.current_buffer then
     local current_buffer_duration = (vim.fn.localtime() - tracker.current_buffer.start)
     file_durations[tracker.current_buffer.path] = (file_durations[tracker.current_buffer.path] or 0)
-      + current_buffer_duration
+        + current_buffer_duration
   end
 
   return file_durations
@@ -90,7 +90,7 @@ local get_all_projects_durations = function(tracker, data)
   if tracker.current_buffer then
     local project_duration = (vim.fn.localtime() - tracker.current_buffer.start)
     project_durations[tracker.current_buffer.cwd] = (project_durations[tracker.current_buffer.cwd] or 0)
-      + project_duration
+        + project_duration
   end
 
   return project_durations
@@ -103,7 +103,7 @@ local render = function(cwd, tracker)
   local current_session_total_duration = get_current_session_duration(current_session_file_durations)
   local data = tracker:load_data()
   local current_project_all_time_file_durations =
-    get_current_project_all_time_file_durations(data, cwd, current_session_file_durations)
+      get_current_project_all_time_file_durations(data, cwd, current_session_file_durations)
   local project_durations = get_all_projects_durations(tracker, data)
 
   local sorted_current_session_files = {}
@@ -371,6 +371,7 @@ function M.show_session_history(tracker)
     vim.bo[top_buf].modifiable = false
   end
 
+
   -- REFRESH BOTTOM WINDOW (Summary)
   local function render_summary()
     line_to_data = {}
@@ -381,8 +382,8 @@ function M.show_session_history(tracker)
 
     local summary_query = string.format(
       "SELECT strftime('%%m/%%d', start_time, 'unixepoch', 'localtime'), strftime('%%w', start_time, 'unixepoch', 'localtime'), id, (end_time - start_time) "
-        .. "FROM sessions WHERE start_time > (strftime('%%s', 'now') - %d) AND start_time <= (strftime('%%s', 'now') - %d) "
-        .. "ORDER BY start_time DESC;",
+      .. "FROM sessions WHERE start_time > (strftime('%%s', 'now') - %d) AND start_time <= (strftime('%%s', 'now') - %d) "
+      .. "ORDER BY start_time DESC;",
       start_bound,
       end_bound
     )
@@ -420,7 +421,7 @@ function M.show_session_history(tracker)
     local title_text = week_offset == 0 and "CURRENT WEEK" or string.format("%d WEEK(S) AGO", week_offset)
 
     local summary_lines = {
-      " " .. title_text,
+      " ",
       string.format(bot_format, "Date", "Day", "Project Root", "Daily", "Project Total"),
       string.rep("─", total_w),
     }
