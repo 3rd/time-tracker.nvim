@@ -10,6 +10,7 @@ It will index your projects based on the current working directory, and track th
 - Automatically tracks time spent on each project and file
 - Displays project stats for the current session and all-time totals
 - Displays all-time totals for all the tracked projects
+- Browses weekly project history with synchronized work-session details
 - Small and easy to customize
 
 ### Setup & requirements
@@ -46,12 +47,23 @@ require("time-tracker").setup({
 **time-tracker.nvim** automatically starts tracking time when you open Neovim and switch between projects or files.
 
 - `:TimeTracker` - Opens a pretty window that shows your stats.
+- `:TimeTrackerHistory` - Opens weekly summaries and matching work sessions.
 
 In the stats window, you can use the following key mappings:
 
 - `q`: Close the time tracking window
 - `c`: Show statistics for the current project
 - `a`: Show statistics for all projects
+
+In the history window, weeks run from Monday through Sunday. The first summary row automatically syncs the work-session details. If the cursor is not on a summary row, the details show all work sessions in the displayed week. `Project Total` is the project's all-time tracked duration, while `Daily` is limited to the displayed date.
+
+The history window uses these key mappings:
+
+- `q`: Close both history panes
+- `H`: Show the older week
+- `L`: Show the newer week, up to the current week
+
+Use your existing up/down window navigation mappings to move between the history panes.
 
 ### Development
 

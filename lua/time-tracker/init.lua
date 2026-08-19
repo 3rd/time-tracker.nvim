@@ -22,7 +22,6 @@ M.setup = function(user_config)
     error("Invalid tracking timeout value: " .. config.tracking_timeout_seconds)
   end
 
-  -- Store tracker on the module so UI functions can access it later
   M.tracker = TimeTracker:new(config)
   M.tracker:start_session()
 
@@ -40,7 +39,6 @@ M.setup = function(user_config)
     end,
   })
 
-  -- Existing simple render command
   vim.api.nvim_create_user_command("TimeTracker", function()
     ui.render(vim.fn.getcwd(), M.tracker)
   end, {})

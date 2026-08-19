@@ -136,7 +136,17 @@ local TimeTracker = {
   end,
 
   load_data = function(self)
+    local count_result = self.Buffer:query():select("COUNT(*) AS count"):execute()
+    local count = count_result and count_result[1] and count_result[1].count
+    if type(count) ~= "number" or count < 0 or count % 1 ~= 0 then
+      error("Failed to count persisted time-tracker buffers.")
+    end
+
+    if count == 0 then return { roots = {} } end
+
     local buffers = self.Buffer:all()
+    if buffers == nil then error("Failed to load persisted time-tracker buffers.") end
+
     local data = { roots = {} }
 
     for _, buffer in ipairs(buffers) do
