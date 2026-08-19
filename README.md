@@ -16,6 +16,7 @@ It will index your projects based on the current working directory, and track th
 ### Setup & requirements
 
 The data is stored in a SQLite database, you need to have `sqlite3` in your `PATH`.
+The plugin uses SQLite's `DELETE` journal mode and closes SQLite after each read or write, so file synchronization only needs the configured database. If synchronization replaces the file during an operation, the plugin reopens the surviving database and retries.
 
 **Install (Lazy):**
 

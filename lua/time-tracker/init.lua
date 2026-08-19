@@ -13,8 +13,13 @@ local default_config = {
 --- @param user_config Config
 M.setup = function(user_config)
   local config = vim.tbl_deep_extend("force", default_config, user_config or {})
+  config.data_file = vim.fn.fnamemodify(config.data_file, ":p")
 
-  if not vim.fn.isdirectory(vim.fn.fnamemodify(config.data_file, ":h")) then
+  local data_file_stat = vim.loop.fs_stat(config.data_file)
+  if
+    vim.fn.isdirectory(vim.fn.fnamemodify(config.data_file, ":h")) == 0
+    or data_file_stat and data_file_stat.type ~= "file"
+  then
     error("Invalid data file path: " .. config.data_file)
   end
 
@@ -22,8 +27,15 @@ M.setup = function(user_config)
     error("Invalid tracking timeout value: " .. config.tracking_timeout_seconds)
   end
 
-  M.tracker = TimeTracker:new(config)
-  M.tracker:start_session()
+  local tracker, initialized = TimeTracker:new(config)
+  if not tracker then return end
+
+  if initialized then
+    local started, retryable = tracker:start_session()
+    if not started and not retryable then return end
+  end
+
+  M.tracker = tracker
 
   for _, event in ipairs(config.tracking_events) do
     vim.api.nvim_create_autocmd(event, {
