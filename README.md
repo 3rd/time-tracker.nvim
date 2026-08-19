@@ -52,8 +52,8 @@ require("time-tracker").setup({
 In the stats window, you can use the following key mappings:
 
 - `q`: Close the time tracking window
-- `c`: Show statistics for the current project
-- `a`: Show statistics for all projects
+- `C`: Show statistics for the current project
+- `A`: Show statistics for all projects
 
 In the history window, weeks run from Monday through Sunday. The first summary row automatically syncs the work-session details. If the cursor is not on a summary row, the details show all work sessions in the displayed week. `Project Total` is the project's all-time tracked duration, while `Daily` is limited to the displayed date.
 

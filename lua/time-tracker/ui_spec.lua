@@ -37,6 +37,45 @@ local function sorted_intervals(snapshot)
   return intervals
 end
 
+local function get_stats_window()
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_config(win).relative ~= "" then
+      local buf = vim.api.nvim_win_get_buf(win)
+      local heading = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
+      if heading and heading:find("**Time Tracker**", 1, true) == 1 then return win end
+    end
+  end
+end
+
+local function close_stats_window()
+  local win = get_stats_window()
+  if win and vim.api.nvim_win_is_valid(win) then pcall(vim.api.nvim_win_close, win, true) end
+end
+
+local function with_stats_modal(columns, lines, captured_now, tracker, fn)
+  local previous_columns = vim.o.columns
+  local previous_lines = vim.o.lines
+  local previous_win = vim.api.nvim_get_current_win()
+  local localtime = t.spy(vim.fn, "localtime")
+  localtime.mockReturnValue(captured_now)
+
+  local ok, err = pcall(function()
+    vim.o.columns = columns
+    vim.o.lines = lines
+    ui.render("/foo", tracker)
+    local win = get_stats_window()
+    if not win then error("Stats float did not open.") end
+    fn(win)
+  end)
+
+  close_stats_window()
+  if vim.api.nvim_win_is_valid(previous_win) then vim.api.nvim_set_current_win(previous_win) end
+  vim.o.columns = previous_columns
+  vim.o.lines = previous_lines
+  localtime.destroy()
+  return ok, err
+end
+
 local function get_history_windows()
   local windows = { count = 0 }
   for _, win in ipairs(vim.api.nvim_list_wins()) do
@@ -86,7 +125,7 @@ local function invoke_mapping(win, lhs)
   vim.api.nvim_set_current_win(win)
   local mapping = vim.fn.maparg(lhs, "n", false, true)
   if type(mapping) ~= "table" or type(mapping.callback) ~= "function" then
-    error("History mapping is not callable: " .. lhs)
+    error("Popup mapping is not callable: " .. lhs)
   end
   mapping.callback()
 end
@@ -135,7 +174,23 @@ local function expect_history_geometry(windows, width, top_height, summary_heigh
   expect(summary_config.row).toBe(work_config.row + top_height + 2)
 end
 
-local function resize_history(columns, lines)
+local function expect_stats_geometry(win, width, height)
+  local config = vim.api.nvim_win_get_config(win)
+  expect(config.title).toBe(nil)
+  expect(rounded_border(config)).toEqual({ "╭", "─", "╮", "│", "╯", "─", "╰", "│" })
+  expect(config.width).toBe(width)
+  expect(config.height).toBe(height)
+end
+
+local function buffer_mapping_lhss(win)
+  local mappings = {}
+  for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(vim.api.nvim_win_get_buf(win), "n")) do
+    mappings[mapping.lhs] = true
+  end
+  return mappings
+end
+
+local function resize_popup(columns, lines)
   vim.o.columns = columns
   vim.o.lines = lines
   vim.api.nvim_exec_autocmds("VimResized", {})
@@ -261,6 +316,97 @@ describe("ui", function()
 end)
 
 localtime.destroy()
+
+describe("stats modal", function()
+  it("uses the history footprint, responds to resize, and follows its uppercase labels", function()
+    local ok, err = with_stats_modal(100, 40, 400, tracker, function(win)
+      local buf = vim.api.nvim_win_get_buf(win)
+      local mappings = buffer_mapping_lhss(win)
+
+      expect_stats_geometry(win, 80, 30)
+      expect(buffer_lines(win)[1]).toBe("**Time Tracker** | `(C)urrent Project` (A)ll Projects")
+      expect(vim.bo[buf].buftype).toBe("nofile")
+      expect(vim.bo[buf].bufhidden).toBe("wipe")
+      expect(vim.bo[buf].filetype).toBe("markdown")
+      expect(vim.bo[buf].swapfile).toBe(false)
+      expect(vim.bo[buf].modifiable).toBe(false)
+      expect(mappings.C).toBe(true)
+      expect(mappings.A).toBe(true)
+      expect(mappings.c).toBe(nil)
+      expect(mappings.a).toBe(nil)
+      expect(lines_fit(win)).toBe(true)
+
+      invoke_mapping(win, "A")
+      expect(buffer_lines(win)[1]).toBe("**Time Tracker** | (C)urrent Project `(A)ll Projects`")
+      expect(lines_contain(buffer_lines(win), "/other")).toBe(true)
+      expect(window_topline(win)).toBe(1)
+
+      resize_popup(60, 20)
+      expect_stats_geometry(win, 48, 14)
+      expect(buffer_lines(win)[1]).toBe("**Time Tracker** | C/A | `A`")
+      expect(lines_fit(win)).toBe(true)
+
+      resize_popup(46, 13)
+      expect_stats_geometry(win, 36, 8)
+      expect(lines_fit(win)).toBe(true)
+
+      invoke_mapping(win, "C")
+      expect(buffer_lines(win)[1]).toBe("**Time Tracker** | C/A | `C`")
+      expect(window_topline(win)).toBe(1)
+
+      invoke_mapping(win, "q")
+      expect(vim.api.nvim_win_is_valid(win)).toBe(false)
+    end)
+    expect(ok and "" or tostring(err)).toBe("")
+  end)
+
+  it("closes and warns when a resize falls below the shared minimum", function()
+    local notify = t.spy(vim, "notify")
+    notify.mockImplementation(function() end)
+    local ok, err = with_stats_modal(100, 40, 400, tracker, function(win)
+      resize_popup(45, 12)
+      expect(vim.api.nvim_win_is_valid(win)).toBe(false)
+    end)
+    local calls = vim.deepcopy(notify.calls)
+    notify.destroy()
+
+    expect(ok and "" or tostring(err)).toBe("")
+    expect(#calls).toBe(1)
+    expect(calls[1].args[1]).toBe("TimeTracker: The stats window requires at least 46 columns and 13 lines.")
+    expect(calls[1].args[2]).toBe(vim.log.levels.WARN)
+  end)
+
+  it("warns without loading data or opening a float below the shared minimum", function()
+    local previous_columns = vim.o.columns
+    local previous_lines = vim.o.lines
+    local load_calls = 0
+    local notify = t.spy(vim, "notify")
+    notify.mockImplementation(function() end)
+    local ok, err = pcall(function()
+      vim.o.columns = 45
+      vim.o.lines = 12
+      ui.render("/foo", {
+        load_data = function()
+          load_calls = load_calls + 1
+          return { roots = {} }
+        end,
+      })
+    end)
+    local calls = vim.deepcopy(notify.calls)
+
+    close_stats_window()
+    vim.o.columns = previous_columns
+    vim.o.lines = previous_lines
+    notify.destroy()
+
+    expect(ok and "" or tostring(err)).toBe("")
+    expect(#calls).toBe(1)
+    expect(calls[1].args[1]).toBe("TimeTracker: The stats window requires at least 46 columns and 13 lines.")
+    expect(calls[1].args[2]).toBe(vim.log.levels.WARN)
+    expect(get_stats_window()).toBe(nil)
+    expect(load_calls).toBe(0)
+  end)
+end)
 
 describe("history data", function()
   it("preserves full paths and includes one active interval exactly once", function()
@@ -555,7 +701,7 @@ describe("history modal", function()
       expect(window_topline(windows.work)).toBe(1)
       expect(window_topline(windows.summary)).toBe(1)
 
-      resize_history(60, 20)
+      resize_popup(60, 20)
       expect_history_geometry(windows, 48, 6, 6)
       expect(buffer_lines(windows.summary)).n.toEqual(wide_summary)
       expect(buffer_lines(windows.summary)[1]).toBe("**Weekly summary** | H/L | `Current week`")
@@ -567,7 +713,7 @@ describe("history modal", function()
       expect(lines_fit(windows.work)).toBe(true)
       expect(lines_fit(windows.summary)).toBe(true)
 
-      resize_history(120, 40)
+      resize_popup(120, 40)
       expect_history_geometry(windows, 96, 15, 13)
       expect(buffer_lines(windows.summary)).n.toEqual(wide_summary)
       expect(buffer_lines(windows.work)).n.toEqual(wide_work)
@@ -575,7 +721,7 @@ describe("history modal", function()
       expect(window_topline(windows.work)).toBe(1)
       expect(window_topline(windows.summary)).toBe(1)
 
-      resize_history(46, 13)
+      resize_popup(46, 13)
       expect_history_geometry(windows, 36, 3, 3)
       expect(buffer_lines(windows.summary)).n.toEqual(wide_summary)
       expect(buffer_lines(windows.summary)[1]).toBe("**Weekly summary** | H/L | `…t week`")
@@ -587,6 +733,37 @@ describe("history modal", function()
       expect(lines_fit(windows.summary)).toBe(true)
       expect(vim.api.nvim_get_current_win()).toBe(windows.summary)
       expect(history_tracker.load_calls).toBe(1)
+    end)
+    expect(ok and "" or tostring(err)).toBe("")
+  end)
+
+  it("keeps same-suffix project identities distinct at minimum width after 100 all-time hours", function()
+    local current_week_start = ui.get_history_week_bounds(captured_now, 0)
+    local roots = {}
+    for _, cwd in ipairs({ "/clients/alpha-project", "/clients/beta-project" }) do
+      roots[cwd] = {
+        [cwd .. "/main.lua"] = {
+          {
+            start = local_day_time(current_week_start, -14, 8),
+            ["end"] = local_day_time(current_week_start, -10, 12),
+          },
+          {
+            start = local_day_time(current_week_start, 2, 10),
+            ["end"] = local_day_time(current_week_start, 2, 10, 30),
+          },
+        },
+      }
+    end
+    local history_tracker = {
+      load_data = function()
+        return { roots = roots }
+      end,
+    }
+    local ok, err = with_history_modal(46, 13, captured_now, history_tracker, function(windows)
+      local summary_lines = buffer_lines(windows.summary)
+      expect(lines_contain(summary_lines, "alpha-project")).toBe(true)
+      expect(lines_contain(summary_lines, "beta-project")).toBe(true)
+      expect(lines_fit(windows.summary)).toBe(true)
     end)
     expect(ok and "" or tostring(err)).toBe("")
   end)
@@ -677,7 +854,7 @@ describe("history modal", function()
 
     expect(ok and "" or tostring(err)).toBe("")
     expect(#calls).toBe(1)
-    expect(calls[1].args[1]).toBe("TimeTracker: History needs at least 46 columns and 13 lines.")
+    expect(calls[1].args[1]).toBe("TimeTracker: The history window requires at least 46 columns and 13 lines.")
     expect(calls[1].args[2]).toBe(vim.log.levels.WARN)
     expect(get_history_windows().count).toBe(0)
     expect(history_tracker.load_calls).toBe(0)

@@ -1,7 +1,10 @@
 local utils = require("time-tracker/utils")
 
 local FLOAT_VIEWPORT_RATIO = 0.8
-local HISTORY_MINIMUM_SIZE_MESSAGE = "TimeTracker: History needs at least 46 columns and 13 lines."
+local POPUP_MINIMUM_WIDTH = 46
+local POPUP_MINIMUM_HEIGHT = 13
+local STATS_MINIMUM_SIZE_MESSAGE = "TimeTracker: The stats window requires at least 46 columns and 13 lines."
+local HISTORY_MINIMUM_SIZE_MESSAGE = "TimeTracker: The history window requires at least 46 columns and 13 lines."
 
 ---@return number, number
 local get_screen_size = function()
@@ -9,17 +12,60 @@ local get_screen_size = function()
   return ui and ui.width or vim.opt.columns:get(), ui and ui.height or vim.opt.lines:get()
 end
 
----@param line_count number
-local get_stats_float_layout = function(line_count)
+---@param text string
+---@param width number
+---@return string
+local truncate_left = function(text, width)
+  if width <= 0 then return "" end
+  if vim.fn.strdisplaywidth(text) <= width then return text end
+  if width == 1 then return "…" end
+
+  local character_count = vim.fn.strchars(text)
+  for start = 1, character_count do
+    local suffix = vim.fn.strcharpart(text, start)
+    if vim.fn.strdisplaywidth(suffix) <= width - 1 then return "…" .. suffix end
+  end
+
+  return "…"
+end
+
+---@param text string
+---@param width number
+---@return string
+local format_inline_code = function(text, width)
+  if width <= 2 then return truncate_left(text, width) end
+  return "`" .. truncate_left(text, width - 2) .. "`"
+end
+
+---@param buf number
+---@param lines string[]
+local set_scratch_buffer_lines = function(buf, lines)
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+end
+
+local get_popup_frame_layout = function()
   local screen_width, screen_height = get_screen_size()
-  local width = math.min(80, math.floor(screen_width * FLOAT_VIEWPORT_RATIO), screen_width)
-  local height = math.min(line_count + 4, math.floor(screen_height * FLOAT_VIEWPORT_RATIO), screen_height)
+  if screen_width < POPUP_MINIMUM_WIDTH or screen_height < POPUP_MINIMUM_HEIGHT then return nil end
 
   return {
-    width = width,
-    height = height,
-    row = math.floor((screen_height - height) / 2),
-    col = math.floor((screen_width - width) / 2),
+    width = math.floor(screen_width * FLOAT_VIEWPORT_RATIO),
+    total_height = math.floor(screen_height * FLOAT_VIEWPORT_RATIO),
+    screen_width = screen_width,
+    screen_height = screen_height,
+  }
+end
+
+local get_stats_float_layout = function()
+  local frame = get_popup_frame_layout()
+  if not frame then return nil end
+
+  return {
+    width = frame.width,
+    height = frame.total_height - 2,
+    row = math.floor((frame.screen_height - frame.total_height) / 2),
+    col = math.floor((frame.screen_width - frame.width - 2) / 2),
   }
 end
 
@@ -115,6 +161,12 @@ end
 ---@param cwd CWD
 ---@param tracker TimeTracker
 local render = function(cwd, tracker)
+  local initial_layout = get_stats_float_layout()
+  if not initial_layout then
+    vim.notify(STATS_MINIMUM_SIZE_MESSAGE, vim.log.levels.WARN)
+    return
+  end
+
   local current_session_file_durations = get_current_session_file_durations(tracker)
   local current_session_total_duration = get_current_session_duration(current_session_file_durations)
   local data = tracker:load_data()
@@ -147,17 +199,31 @@ local render = function(cwd, tracker)
   end)
 
   local mode = "current"
+  local layout = initial_layout
+  local buf
+  local win
+  local autocmd_group
+  local closing = false
 
-  local render_lines = function()
-    local lines = {
-      "**Time Tracker** | ",
-    }
+  local format_heading = function(width)
+    local heading = mode == "current" and "**Time Tracker** | `(C)urrent Project` (A)ll Projects"
+      or "**Time Tracker** | (C)urrent Project `(A)ll Projects`"
+    if vim.fn.strdisplaywidth(heading) <= width then return heading end
+    return "**Time Tracker** | C/A | `" .. (mode == "current" and "C" or "A") .. "`"
+  end
+
+  local format_path_line = function(duration, path, width)
+    local prefix = "- " .. utils.format_duration(duration) .. " "
+    return prefix .. format_inline_code(utils.format_path_friendly(path), width - vim.fn.strdisplaywidth(prefix))
+  end
+
+  local render_lines = function(width)
+    local lines = { format_heading(width), string.rep("─", width) }
 
     if mode == "current" then
-      lines[1] = lines[1] .. "`(C)urrent Project` (A)ll Projects"
       vim.list_extend(lines, {
         "",
-        "Root: `" .. utils.format_path_friendly(cwd) .. "`",
+        "Root: " .. format_inline_code(utils.format_path_friendly(cwd), width - 6),
         "",
         "Current session: " .. utils.format_duration(current_session_total_duration),
         "All-time: " .. utils.format_duration(project_durations[cwd] or 0),
@@ -166,10 +232,7 @@ local render = function(cwd, tracker)
       })
 
       for _, file in ipairs(sorted_current_session_files) do
-        table.insert(
-          lines,
-          string.format("- %s `%s`", utils.format_duration(file.duration), utils.format_path_friendly(file.file))
-        )
+        table.insert(lines, format_path_line(file.duration, file.file, width))
       end
 
       vim.list_extend(lines, {
@@ -178,72 +241,118 @@ local render = function(cwd, tracker)
       })
 
       for _, file in ipairs(sorted_project_files) do
-        table.insert(
-          lines,
-          string.format("- %s `%s`", utils.format_duration(file.duration), utils.format_path_friendly(file.file))
-        )
+        table.insert(lines, format_path_line(file.duration, file.file, width))
       end
     else
-      lines[1] = lines[1] .. "(C)urrent Project `(A)ll Projects`"
       vim.list_extend(lines, {
         "",
         "Projects:",
       })
 
       for _, project in ipairs(sorted_project_durations) do
-        table.insert(
-          lines,
-          string.format("- %s `%s`", utils.format_duration(project.duration), utils.format_path_friendly(project.path))
-        )
+        table.insert(lines, format_path_line(project.duration, project.path, width))
       end
     end
 
     return lines
   end
 
-  local lines = render_lines()
-  local layout = get_stats_float_layout(#lines)
-  local divider = string.rep("─", layout.width)
-  table.insert(lines, 2, divider)
-
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.bo[buf].buftype = "nofile"
-  vim.bo[buf].filetype = "markdown"
-  vim.bo[buf].swapfile = false
-  vim.bo[buf].modifiable = false
-
-  local win = vim.api.nvim_open_win(buf, true, {
-    style = "minimal",
-    relative = "editor",
-    width = layout.width,
-    height = layout.height,
-    row = layout.row,
-    col = layout.col,
-    border = "rounded",
-  })
-  vim.wo[win].cursorline = true
-  vim.wo[win].wrap = true
-  vim.wo[win].concealcursor = "nc"
-
-  local rerender = function(new_mode)
-    mode = new_mode
-    local updated_lines = render_lines()
-    table.insert(updated_lines, 2, divider)
-
-    vim.bo[buf].modifiable = true
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, updated_lines)
-    vim.bo[buf].modifiable = false
+  local stats_window_is_valid = function()
+    return win and vim.api.nvim_win_is_valid(win)
   end
 
-  local keymap_flags = { noremap = true, silent = true, buffer = buf, nowait = true }
-  vim.keymap.set("n", "q", "<cmd>quit<cr>", vim.tbl_extend("force", keymap_flags, { desc = "Close time tracker" }))
-  vim.keymap.set("n", "c", function()
-    rerender("current")
-  end, vim.tbl_extend("force", keymap_flags, { desc = "Show current project stats" }))
-  vim.keymap.set("n", "a", function()
-    rerender("all")
-  end, vim.tbl_extend("force", keymap_flags, { desc = "Show all projects stats" }))
+  local close_stats_window = function()
+    if closing then return end
+    closing = true
+    if autocmd_group then
+      pcall(vim.api.nvim_del_augroup_by_id, autocmd_group)
+      autocmd_group = nil
+    end
+    if stats_window_is_valid() then pcall(vim.api.nvim_win_close, win, true) end
+    if buf and vim.api.nvim_buf_is_valid(buf) then pcall(vim.api.nvim_buf_delete, buf, { force = true }) end
+  end
+
+  local render_stats = function(reset_view)
+    if not stats_window_is_valid() then return end
+    set_scratch_buffer_lines(buf, render_lines(layout.width))
+    if reset_view then vim.api.nvim_win_call(win, function()
+      vim.fn.winrestview({ topline = 1 })
+    end) end
+  end
+
+  local show_mode = function(new_mode)
+    mode = new_mode
+    render_stats(true)
+  end
+
+  local ok, err = pcall(function()
+    buf = vim.api.nvim_create_buf(false, true)
+    vim.bo[buf].buftype = "nofile"
+    vim.bo[buf].bufhidden = "wipe"
+    vim.bo[buf].filetype = "markdown"
+    vim.bo[buf].swapfile = false
+    vim.bo[buf].modifiable = false
+    set_scratch_buffer_lines(buf, { "" })
+
+    win = vim.api.nvim_open_win(buf, true, {
+      style = "minimal",
+      relative = "editor",
+      width = layout.width,
+      height = layout.height,
+      row = layout.row,
+      col = layout.col,
+      border = "rounded",
+    })
+    vim.wo[win].cursorline = true
+    vim.wo[win].wrap = true
+    vim.wo[win].concealcursor = "nc"
+    render_stats(true)
+
+    local keymap_flags = { noremap = true, silent = true, buffer = buf, nowait = true }
+    vim.keymap.set("n", "q", close_stats_window, vim.tbl_extend("force", keymap_flags, { desc = "Close time tracker" }))
+    vim.keymap.set("n", "C", function()
+      show_mode("current")
+    end, vim.tbl_extend("force", keymap_flags, { desc = "Show current project stats" }))
+    vim.keymap.set("n", "A", function()
+      show_mode("all")
+    end, vim.tbl_extend("force", keymap_flags, { desc = "Show all projects stats" }))
+
+    autocmd_group = vim.api.nvim_create_augroup(string.format("TimeTrackerStats%d", buf), { clear = true })
+    vim.api.nvim_create_autocmd("WinClosed", {
+      group = autocmd_group,
+      pattern = tostring(win),
+      callback = close_stats_window,
+    })
+    vim.api.nvim_create_autocmd("VimResized", {
+      group = autocmd_group,
+      callback = function()
+        if not stats_window_is_valid() then
+          close_stats_window()
+          return
+        end
+        local resized_layout = get_stats_float_layout()
+        if not resized_layout then
+          close_stats_window()
+          vim.notify(STATS_MINIMUM_SIZE_MESSAGE, vim.log.levels.WARN)
+          return
+        end
+        layout = resized_layout
+        vim.api.nvim_win_set_config(win, {
+          relative = "editor",
+          width = layout.width,
+          height = layout.height,
+          row = layout.row,
+          col = layout.col,
+        })
+        render_stats(false)
+      end,
+    })
+  end)
+
+  if ok then return end
+
+  close_stats_window()
+  vim.notify("TimeTracker: Failed to render stats. Error: " .. tostring(err), vim.log.levels.ERROR)
 end
 
 ---@param timestamp number
@@ -271,6 +380,44 @@ local add_local_days = function(timestamp, days)
   return shifted
 end
 
+---@param day_segments table<number, table>
+---@param interval table
+local add_history_interval_to_day_segments = function(day_segments, interval)
+  local segment_start = interval.start
+  while segment_start < interval["end"] do
+    local day_start = get_local_midnight(segment_start)
+    local day_end = add_local_days(day_start, 1)
+    local segment_end = math.min(interval["end"], day_end)
+    local segment = {
+      cwd = interval.cwd,
+      path = interval.path,
+      start = segment_start,
+      ["end"] = segment_end,
+      day_start = day_start,
+      day_end = day_end,
+    }
+    local indexed_day = day_segments[day_start]
+    if not indexed_day then
+      indexed_day = { all = {}, by_cwd = {} }
+      day_segments[day_start] = indexed_day
+    end
+    table.insert(indexed_day.all, segment)
+    if not indexed_day.by_cwd[interval.cwd] then indexed_day.by_cwd[interval.cwd] = {} end
+    table.insert(indexed_day.by_cwd[interval.cwd], segment)
+    segment_start = segment_end
+  end
+end
+
+---@param intervals table[]
+---@return table<number, table>
+local build_history_day_segments = function(intervals)
+  local day_segments = {}
+  for _, interval in ipairs(intervals) do
+    add_history_interval_to_day_segments(day_segments, interval)
+  end
+  return day_segments
+end
+
 ---@param timestamp number
 ---@param week_offset number
 ---@return number, number
@@ -291,7 +438,7 @@ end
 ---@param current_session CurrentSession|nil
 ---@param current_buffer CurrentBuffer|nil
 ---@param captured_now number
----@return { intervals: table[], project_totals: table<string, number> }
+---@return { intervals: table[], project_totals: table<string, number>, day_segments: table<number, table> }
 local build_history_snapshot = function(data, current_session, current_buffer, captured_now)
   if type(data) ~= "table" or type(data.roots) ~= "table" then error("Persisted history data is malformed.") end
   if type(captured_now) ~= "number" then error("History snapshot time must be a number.") end
@@ -299,6 +446,7 @@ local build_history_snapshot = function(data, current_session, current_buffer, c
   local snapshot = {
     intervals = {},
     project_totals = {},
+    day_segments = {},
   }
 
   local add_history_interval = function(cwd, path, interval_start, interval_end)
@@ -306,13 +454,15 @@ local build_history_snapshot = function(data, current_session, current_buffer, c
     if type(interval_start) ~= "number" or type(interval_end) ~= "number" then return end
     if interval_end <= interval_start then return end
 
-    table.insert(snapshot.intervals, {
+    local interval = {
       cwd = cwd,
       path = path,
       start = interval_start,
       ["end"] = interval_end,
-    })
+    }
+    table.insert(snapshot.intervals, interval)
     snapshot.project_totals[cwd] = (snapshot.project_totals[cwd] or 0) + (interval_end - interval_start)
+    add_history_interval_to_day_segments(snapshot.day_segments, interval)
   end
 
   for cwd, root in pairs(data.roots) do
@@ -334,40 +484,43 @@ local build_history_snapshot = function(data, current_session, current_buffer, c
   return snapshot
 end
 
----@param snapshot { intervals: table[], project_totals: table<string, number> }
+---@param snapshot { intervals: table[], project_totals: table<string, number>, day_segments?: table<number, table> }
 ---@param range_start number
 ---@param range_end number
 ---@param cwd? string
 ---@return table[]
 local get_history_segments = function(snapshot, range_start, range_end, cwd)
   local segments = {}
+  if range_end <= range_start then return segments end
+  local day_segments = snapshot.day_segments or build_history_day_segments(snapshot.intervals)
 
-  for _, interval in ipairs(snapshot.intervals) do
-    if (not cwd or interval.cwd == cwd) and interval.start < range_end and interval["end"] > range_start then
-      local segment_start = math.max(interval.start, range_start)
-      local clipped_end = math.min(interval["end"], range_end)
-
-      while segment_start < clipped_end do
-        local day_start = get_local_midnight(segment_start)
-        local day_end = add_local_days(day_start, 1)
-        local segment_end = math.min(clipped_end, day_end)
-        table.insert(segments, {
-          cwd = interval.cwd,
-          path = interval.path,
-          start = segment_start,
-          ["end"] = segment_end,
-          day_start = day_start,
-          day_end = day_end,
-        })
-        segment_start = segment_end
+  local day_start = get_local_midnight(range_start)
+  while day_start < range_end do
+    local indexed_day = day_segments[day_start]
+    local indexed_segments = indexed_day and (cwd and indexed_day.by_cwd[cwd] or indexed_day.all)
+    if indexed_segments then
+      for _, segment in ipairs(indexed_segments) do
+        local segment_start = math.max(segment.start, range_start)
+        local segment_end = math.min(segment["end"], range_end)
+        if segment_start < segment_end then
+          table.insert(segments, {
+            cwd = segment.cwd,
+            path = segment.path,
+            start = segment_start,
+            ["end"] = segment_end,
+            day_start = segment.day_start,
+            day_end = segment.day_end,
+          })
+        end
       end
     end
+    day_start = add_local_days(day_start, 1)
   end
 
   return segments
 end
 
----@param snapshot { intervals: table[], project_totals: table<string, number> }
+---@param snapshot { intervals: table[], project_totals: table<string, number>, day_segments?: table<number, table> }
 ---@param week_start number
 ---@param week_end number
 ---@return table[]
@@ -400,7 +553,7 @@ local get_history_week_summary = function(snapshot, week_start, week_end)
   return summaries
 end
 
----@param snapshot { intervals: table[], project_totals: table<string, number> }
+---@param snapshot { intervals: table[], project_totals: table<string, number>, day_segments?: table<number, table> }
 ---@param range_start number
 ---@param range_end number
 ---@param cwd? string
@@ -413,31 +566,6 @@ local get_history_work_sessions = function(snapshot, range_start, range_end, cwd
     return a.path < b.path
   end)
   return sessions
-end
-
----@param text string
----@param width number
----@return string
-local truncate_left = function(text, width)
-  if width <= 0 then return "" end
-  if vim.fn.strdisplaywidth(text) <= width then return text end
-  if width == 1 then return "…" end
-
-  local character_count = vim.fn.strchars(text)
-  for start = 1, character_count do
-    local suffix = vim.fn.strcharpart(text, start)
-    if vim.fn.strdisplaywidth(suffix) <= width - 1 then return "…" .. suffix end
-  end
-
-  return "…"
-end
-
----@param text string
----@param width number
----@return string
-local format_inline_code = function(text, width)
-  if width <= 2 then return truncate_left(text, width) end
-  return "`" .. truncate_left(text, width - 2) .. "`"
 end
 
 ---@param week_offset number
@@ -501,8 +629,8 @@ local format_history_summary = function(summary, width)
   local prefix
   local suffix
   if width < 48 then
-    prefix = "- " .. summary.date .. " "
-    suffix = " " .. daily_duration .. "/" .. project_total .. " d/t"
+    prefix = "- " .. summary.date:sub(6) .. " "
+    return prefix .. format_inline_code(utils.format_path_friendly(summary.cwd), width - vim.fn.strdisplaywidth(prefix))
   elseif width < 64 then
     prefix = "- " .. summary.date .. " · "
     suffix = " · d/t " .. daily_duration .. "/" .. project_total
@@ -510,6 +638,10 @@ local format_history_summary = function(summary, width)
     prefix = "- " .. summary.date .. " " .. summary.day .. " · "
     suffix = " · daily " .. daily_duration .. " · total " .. project_total
   end
+  local prefix_width = vim.fn.strdisplaywidth(prefix)
+  local minimum_project_width = 18
+  local maximum_suffix_width = width - prefix_width - minimum_project_width
+  if vim.fn.strdisplaywidth(suffix) > maximum_suffix_width then suffix = truncate_left(suffix, maximum_suffix_width) end
   local project_width = width - vim.fn.strdisplaywidth(prefix) - vim.fn.strdisplaywidth(suffix)
 
   return prefix .. format_inline_code(utils.format_path_friendly(summary.cwd), project_width) .. suffix
@@ -559,24 +691,16 @@ local format_history_summary_lines = function(summaries, width, week_offset)
   return lines, summary_line_data
 end
 
----@param buf number
----@param lines string[]
-local set_scratch_buffer_lines = function(buf, lines)
-  vim.bo[buf].modifiable = true
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.bo[buf].modifiable = false
-end
-
 local get_history_float_layout = function()
-  local screen_width, screen_height = get_screen_size()
-  if screen_width < 46 or screen_height < 13 then return nil end
+  local frame = get_popup_frame_layout()
+  if not frame then return nil end
 
   local layout = {
-    width = math.floor(screen_width * FLOAT_VIEWPORT_RATIO),
-    total_height = math.floor(screen_height * FLOAT_VIEWPORT_RATIO),
+    width = frame.width,
+    total_height = frame.total_height,
   }
-  layout.row = math.floor((screen_height - layout.total_height) / 2)
-  layout.col = math.floor((screen_width - layout.width - 2) / 2)
+  layout.row = math.floor((frame.screen_height - layout.total_height) / 2)
+  layout.col = math.floor((frame.screen_width - layout.width - 2) / 2)
 
   local content_rows = layout.total_height - 4
   layout.top_height = math.floor(content_rows * 0.53 + 0.5)
